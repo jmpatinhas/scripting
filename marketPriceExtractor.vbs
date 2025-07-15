@@ -1,48 +1,41 @@
-Function GetMarketPrices(tickers)
-    Dim prices()
-    Dim i, xlApp, xlBook
+Function GetMarketPrices(tickersString)
+    Dim tickers, prices()
+    Dim i, xlApp, xlBook, result
     
-    ' Size the output array
+    ' Split input string into array
+    tickers = Split(tickersString, ";")
+    
+    ' Initialize output array
     ReDim prices(UBound(tickers))
     
-    ' Create single Excel instance
+    ' Connect to Excel + Capital IQ
     Set xlApp = CreateObject("Excel.Application")
     xlApp.Visible = False
-    xlApp.DisplayAlerts = False
-    
-    ' Add new workbook (required for plugin to load)
     Set xlBook = xlApp.Workbooks.Add()
+    WScript.Sleep 3000  ' Wait for plugin to load
     
-    ' Wait for plugin to initialize (if needed)
-    WScript.Sleep 5000
-    
-    ' Get price for each ticker
+    ' Fetch prices
     For i = 0 To UBound(tickers)
-        prices(i) = GetPrice(xlApp, tickers(i))
+        prices(i) = GetPrice(xlApp, Trim(tickers(i)))  ' Trim to remove whitespace
     Next
     
-    ' Clean up
+    ' Convert prices array to semicolon string
+    result = Join(prices, ";")
+    
+    ' Cleanup
     xlBook.Close False
     xlApp.Quit
     Set xlBook = Nothing
     Set xlApp = Nothing
     
-    GetMarketPrices = prices
+    GetMarketPrices = result
 End Function
 
 Function GetPrice(xlApp, ticker)
     Dim price
-    
     On Error Resume Next
-    
-    ' Use Capital IQ formula
     price = xlApp.Evaluate("=SPG(""" & ticker & """,""SP_LASTSALEPRICE"")")
-    
-    If Not IsNumeric(price) Then 
-        price = 0
-    End If
-    
+    If Err.Number <> 0 Or Not IsNumeric(price) Then price = 0
     On Error GoTo 0
-    
     GetPrice = price
 End Function
