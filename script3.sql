@@ -1,5 +1,5 @@
--- Script to identify users who stayed above 9GB usage for a full month
--- Assumes weekly RPA execution creates records each week
+-- Simplified script compatible with older SQL Server versions
+-- Identifies users who stayed above 9GB usage for a full month
 
 DECLARE @TargetMonth INT = MONTH(GETDATE()); -- Current month, adjust as needed
 DECLARE @TargetYear INT = YEAR(GETDATE());   -- Current year, adjust as needed
@@ -49,9 +49,7 @@ UserMonthlyStats AS (
         MAX(USED_STORAGE_GB) as MaxUsageGB,
         AVG(USED_STORAGE_GB) as AvgUsageGB,
         -- Count weeks where usage was above 9GB
-        SUM(CASE WHEN USED_STORAGE_GB > 9 THEN 1 ELSE 0 END) as WeeksAbove9GB,
-        -- Get all weekly usage values as a string for reference
-        STRING_AGG(CAST(USED_STORAGE_GB as VARCHAR(10)), ', ') WITHIN GROUP (ORDER BY WeekInMonth) as WeeklyUsagePattern
+        SUM(CASE WHEN USED_STORAGE_GB > 9 THEN 1 ELSE 0 END) as WeeksAbove9GB
     FROM WeeklyMaxUsage
     GROUP BY USER_NAME, FIRST_NAME, LAST_NAME, EMAIL
 )
@@ -66,7 +64,6 @@ SELECT
     MinUsageGB,
     MaxUsageGB,
     AvgUsageGB,
-    WeeklyUsagePattern,
     CASE 
         WHEN WeeksAbove9GB = WeeksWithData AND WeeksWithData >= @MinWeeksInMonth 
         THEN 'YES - Stayed above 9GB all month'
