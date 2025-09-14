@@ -1,0 +1,139 @@
+-- Backfill Missing Portfolios Script
+-- This script inserts records for portfolios that don't have entries in current execution
+-- using their most recent historical data
+
+DECLARE @EXEC_ID UNIQUEIDENTIFIER = 'YOUR_CURRENT_EXEC_ID_HERE'; -- Replace with current execution ID
+
+-- Step 1: Insert missing portfolio summary records
+INSERT INTO WLF_001_BCM_CASE_SUMMARY (
+    CASE_ID,
+    EXEC_ID, 
+    TIDES_CASE_ID,
+    TIDES_BRKR_NAME,
+    TIDES_STMT_END_DATE,
+    TIDES_CASH_POS,
+    TIDES_NON_CASH_POS,
+    TIDES_TOTAL_MARKET_VALUE,
+    UPDT_NON_CASH_POS,
+    UPDT_TOTAL_MARKET_VALUE,
+    DELTA,
+    STATUS,
+    STATUS_MESSAGE
+)
+SELECT 
+    NEWID() as CASE_ID, -- Generate new unique identifier for this execution
+    @EXEC_ID as EXEC_ID, -- Current execution ID
+    most_recent.TIDES_CASE_ID,
+    most_recent.TIDES_BRKR_NAME,
+    most_recent.TIDES_STMT_END_DATE,
+    most_recent.TIDES_CASH_POS,
+    most_recent.TIDES_NON_CASH_POS,
+    most_recent.TIDES_TOTAL_MARKET_VALUE,
+    most_recent.TIDES_NON_CASH_POS as UPDT_NON_CASH_POS, -- Will be updated by pricing engine
+    most_recent.TIDES_TOTAL_MARKET_VALUE as UPDT_TOTAL_MARKET_VALUE, -- Will be updated by pricing engine
+    0 as DELTA, -- Will be calculated after pricing update
+    'Awaits Execution' as STATUS,
+    'Portfolio carried forward from previous execution - awaiting price updates' as STATUS_MESSAGE
+
+FROM (
+    -- Get the most recent record for each TIDES_CASE_ID that's not in current execution
+    SELECT 
+        s1.TIDES_CASE_ID,
+        s1.CASE_ID as SOURCE_CASE_ID,
+        s1.TIDES_BRKR_NAME,
+        s1.TIDES_STMT_END_DATE,
+        s1.TIDES_CASH_POS,
+        s1.TIDES_NON_CASH_POS,
+        s1.TIDES_TOTAL_MARKET_VALUE,
+        ROW_NUMBER() OVER (PARTITION BY s1.TIDES_CASE_ID ORDER BY s1.EXEC_ID DESC) as rn
+    FROM WLF_001_BCM_CASE_SUMMARY s1
+    WHERE s1.TIDES_CASE_ID NOT IN (
+        -- Exclude portfolios that already exist in current execution
+        SELECT DISTINCT s2.TIDES_CASE_ID 
+        FROM WLF_001_BCM_CASE_SUMMARY s2 
+        WHERE s2.EXEC_ID = @EXEC_ID
+    )
+) most_recent
+WHERE most_recent.rn = 1; -- Only the most recent record for each portfolio
+
+-- Capture the number of portfolio records inserted
+DECLARE @PortfoliosInserted INT = @@ROWCOUNT;
+
+-- Step 2: Insert corresponding investment records for the newly inserted portfolios
+INSERT INTO WLF_001_BCM_CASE_INVESTMENTS (
+    INVESTMENT_ID,
+    CASE_ID,
+    INV_SYMBOL,
+    TIDES_INV_QTY,
+    TIDES_CURRENT_PRICE,
+    TIDES_MARKET_VALUE,
+    UPDT_CURRENT_PRICE,
+    UPDT_MRKT_VALUE,
+    STATUS,
+    STATUS_UPDATE
+)
+SELECT 
+    NEWID() as INVESTMENT_ID, -- Generate new unique identifier
+    new_cases.CASE_ID, -- Link to the newly inserted case record
+    source_inv.INV_SYMBOL,
+    source_inv.TIDES_INV_QTY,
+    source_inv.TIDES_CURRENT_PRICE,
+    source_inv.TIDES_MARKET_VALUE,
+    source_inv.TIDES_CURRENT_PRICE as UPDT_CURRENT_PRICE, -- Will be updated by pricing engine
+    source_inv.TIDES_MARKET_VALUE as UPDT_MRKT_VALUE, -- Will be updated by pricing engine
+    'Awaits Price Update' as STATUS,
+    'Investment carried forward - awaiting current price lookup' as STATUS_UPDATE
+
+FROM WLF_001_BCM_CASE_SUMMARY new_cases
+INNER JOIN (
+    -- Get the most recent investment data for each portfolio
+    SELECT 
+        s.TIDES_CASE_ID,
+        i.INV_SYMBOL,
+        i.TIDES_INV_QTY,
+        i.TIDES_CURRENT_PRICE,
+        i.TIDES_MARKET_VALUE,
+        ROW_NUMBER() OVER (
+            PARTITION BY s.TIDES_CASE_ID, i.INV_SYMBOL 
+            ORDER BY s.EXEC_ID DESC
+        ) as rn
+    FROM WLF_001_BCM_CASE_INVESTMENTS i
+    INNER JOIN WLF_001_BCM_CASE_SUMMARY s ON i.CASE_ID = s.CASE_ID
+    WHERE s.TIDES_CASE_ID NOT IN (
+        -- Only for portfolios that were just backfilled
+        SELECT DISTINCT s2.TIDES_CASE_ID 
+        FROM WLF_001_BCM_CASE_SUMMARY s2 
+        WHERE s2.EXEC_ID = @EXEC_ID 
+        AND s2.STATUS != 'Awaits Execution' -- Exclude the ones we just inserted
+    )
+) source_inv ON new_cases.TIDES_CASE_ID = source_inv.TIDES_CASE_ID
+
+WHERE new_cases.EXEC_ID = @EXEC_ID 
+  AND new_cases.STATUS = 'Awaits Execution' -- Only the records we just inserted
+  AND source_inv.rn = 1; -- Most recent investment data only
+
+-- Capture the number of investment records inserted
+DECLARE @InvestmentsInserted INT = @@ROWCOUNT;
+
+-- Step 3: Summary output
+PRINT 'Backfill process completed successfully:';
+PRINT CONCAT('- Portfolios inserted: ', @PortfoliosInserted);
+PRINT CONCAT('- Investment records inserted: ', @InvestmentsInserted);
+PRINT CONCAT('- Execution ID: ', CAST(@EXEC_ID AS VARCHAR(36)));
+
+-- Step 4: Optional verification query - show what was inserted
+SELECT 
+    'SUMMARY' as RECORD_TYPE,
+    s.TIDES_CASE_ID,
+    s.TIDES_BRKR_NAME,
+    s.TIDES_STMT_END_DATE,
+    s.TIDES_TOTAL_MARKET_VALUE,
+    s.STATUS,
+    COUNT(i.INVESTMENT_ID) as INVESTMENT_COUNT
+FROM WLF_001_BCM_CASE_SUMMARY s
+LEFT JOIN WLF_001_BCM_CASE_INVESTMENTS i ON s.CASE_ID = i.CASE_ID
+WHERE s.EXEC_ID = @EXEC_ID 
+  AND s.STATUS = 'Awaits Execution'
+GROUP BY s.TIDES_CASE_ID, s.TIDES_BRKR_NAME, s.TIDES_STMT_END_DATE, 
+         s.TIDES_TOTAL_MARKET_VALUE, s.STATUS
+ORDER BY s.TIDES_CASE_ID;
