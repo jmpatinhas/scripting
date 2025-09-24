@@ -1,38 +1,32 @@
-Imports System.Threading
-Imports Microsoft.Office.Interop.Outlook
+Dim startTime As DateTime = DateTime.Now
+Dim maxWaitTime As TimeSpan = TimeSpan.FromMinutes(5)
 
-' Simple function to wait for Outlook sync completion
-Public Function WaitForOutlookSync(maxWaitMinutes As Integer) As Boolean
-    Dim startTime As DateTime = DateTime.Now
-    Dim maxWaitTime As TimeSpan = TimeSpan.FromMinutes(maxWaitMinutes)
-    
-    While DateTime.Now - startTime < maxWaitTime
-        Try
-            Dim outlookApp As New Application()
-            Dim session As NameSpace = outlookApp.Session
-            Dim anySyncRunning As Boolean = False
-            
-            For Each syncObj As SyncObject In session.SyncObjects
-                If syncObj.IsRunning Then
-                    anySyncRunning = True
-                    Exit For
-                End If
-            Next
-            
-            If Not anySyncRunning Then
-                Return True ' All sync complete
+While DateTime.Now - startTime < maxWaitTime
+    Try
+        Dim outlookApp = CreateObject("Outlook.Application")
+        Dim session = outlookApp.Session
+        Dim anySyncRunning As Boolean = False
+        
+        For Each syncObj In session.SyncObjects
+            If syncObj.IsRunning Then
+                anySyncRunning = True
+                Exit For
             End If
-            
-            Thread.Sleep(3000) ' Wait 3 seconds before checking again
-            
-        Catch ex As Exception
-            ' If error, assume sync is complete to avoid infinite waiting
-            Return True
-        End Try
-    End While
-    
-    Return False ' Timeout reached
-End Function
+        Next
+        
+        If Not anySyncRunning Then
+            output = "true"
+            Exit While
+        End If
+        
+        System.Threading.Thread.Sleep(3000)
+        
+    Catch ex As Exception
+        output = "true"
+        Exit While
+    End Try
+End While
 
-' Usage in UiPath:
-' syncComplete = WaitForOutlookSync(5)
+If output <> "true" Then
+    output = "false"
+End If
