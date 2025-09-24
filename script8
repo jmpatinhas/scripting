@@ -11,10 +11,8 @@ try
     var outlookNs = outlookApp.GetNamespace("MAPI");
     var syncObjects = outlookNs.SyncObjects;
 
-    // Create a wait handle so we can block until sync ends or timeout
     System.Threading.AutoResetEvent syncDoneEvent = new System.Threading.AutoResetEvent(false);
 
-    // Subscribe to SyncEnd events
     for (int i = 1; i <= syncObjects.Count; i++)
     {
         var syncObj = syncObjects[i];
@@ -26,11 +24,11 @@ try
                 syncDoneEvent.Set();
             });
 
-        // Optionally trigger sync (if you want to force it instead of waiting for automatic one)
-        // syncObj.Start();
+        // Force a sync cycle for this object
+        syncObj.Start();
     }
 
-    // Wait until sync finishes or timeout expires
+    // Wait for at least one SyncEnd or until timeout
     if (syncDoneEvent.WaitOne(timeout))
     {
         syncCompleted = true;
