@@ -1,33 +1,158 @@
-Dim startTime As DateTime = DateTime.Now
-Dim maxWaitTime As TimeSpan = TimeSpan.FromMinutes(5)
+// UiPath Invoke Code Activity - Outlook Sync Monitor
+// Output variable: syncResult (String)
+// Input variables: maxWaitMinutes (Int32, default: 5)
 
-While DateTime.Now - startTime < maxWaitTime
-    Try
-        Dim outlookApp As New Microsoft.Office.Interop.Outlook.Application
-        Dim session As Microsoft.Office.Interop.Outlook.NameSpace = outlookApp.Session
-        Dim anySyncRunning As Boolean = False
-        
-        For Each syncObj As Microsoft.Office.Interop.Outlook.SyncObject In session.SyncObjects
-            Dim isRunning As Object = syncObj.GetType().InvokeMember("IsRunning", System.Reflection.BindingFlags.GetProperty, Nothing, syncObj, Nothing)
-            If CBool(isRunning) = True Then
-                anySyncRunning = True
-                Exit For
-            End If
-        Next
-        
-        If Not anySyncRunning Then
-            output = "true"
-            Exit While
-        End If
-        
-        System.Threading.Thread.Sleep(3000)
-        
-    Catch ex As Exception
-        output = "true"
-        Exit While
-    End Try
-End While
+try
+{
+    // Get the maximum wait time (default 5 minutes if not provided)
+    int maxWaitTime = 5;
+    if (maxWaitMinutes != null && maxWaitMinutes > 0)
+    {
+        maxWaitTime = maxWaitMinutes;
+    }
+    
+    DateTime startTime = DateTime.Now;
+    TimeSpan timeout = TimeSpan.FromMinutes(maxWaitTime);
+    bool outlookSynced = false;
+    
+    // Import necessary namespaces
+    System.Diagnostics.Process[] outlookProcesses;
+    System.IntPtr outlookHandle = System.IntPtr.Zero;
+    
+    while (DateTime.Now - startTime < timeout)
+    {
+        try
+        {
+            // Find Outlook process
+            outlookProcesses = System.Diagnostics.Process.GetProcessesByName("OUTLOOK");
+            
+            if (outlookProcesses.Length == 0)
+            {
+                // Outlook is not running
+                syncResult = "False";
+                return;
+            }
+            
+            // Get the main window handle
+            outlookHandle = outlookProcesses[0].MainWindowHandle;
+            
+            if (outlookHandle == System.IntPtr.Zero)
+            {
+                System.Threading.Thread.Sleep(1000);
+                continue;
+            }
+            
+            // Get window text/title
+            System.Text.StringBuilder windowText = new System.Text.StringBuilder(256);
+            GetWindowText(outlookHandle, windowText, 256);
+            string windowTitle = windowText.ToString();
+            
+            // Check for sync completion indicators in window title
+            if (windowTitle.Contains("All folders are up to date") || 
+                windowTitle.Contains("Up to date") ||
+                (!windowTitle.Contains("Synchronizing") && 
+                 !windowTitle.Contains("Syncing") && 
+                 !windowTitle.Contains("Downloading") &&
+                 !windowTitle.Contains("Sending") &&
+                 !windowTitle.Contains("Updating")))
+            {
+                // Additional check: Look for status bar text
+                bool syncIndicatorFound = CheckOutlookStatusBar(outlookHandle);
+                
+                if (!syncIndicatorFound)
+                {
+                    // Wait a bit more to ensure sync is truly complete
+                    System.Threading.Thread.Sleep(2000);
+                    
+                    // Double-check
+                    syncIndicatorFound = CheckOutlookStatusBar(outlookHandle);
+                    
+                    if (!syncIndicatorFound)
+                    {
+                        outlookSynced = true;
+                        break;
+                    }
+                }
+            }
+            
+            // Wait before next check
+            System.Threading.Thread.Sleep(2000);
+        }
+        catch (System.Exception ex)
+        {
+            // Continue trying even if there's an error
+            System.Threading.Thread.Sleep(1000);
+        }
+    }
+    
+    syncResult = outlookSynced ? "True" : "False";
+}
+catch (System.Exception mainEx)
+{
+    syncResult = "False";
+}
 
-If output <> "true" Then
-    output = "false"
-End If
+// Helper method to get window text
+[System.Runtime.InteropServices.DllImport("user32.dll", CharSet = System.Runtime.InteropServices.CharSet.Auto)]
+static extern int GetWindowText(System.IntPtr hWnd, System.Text.StringBuilder lpString, int nMaxCount);
+
+// Helper method to find child windows
+[System.Runtime.InteropServices.DllImport("user32.dll")]
+static extern bool EnumChildWindows(System.IntPtr hWndParent, EnumChildProc lpEnumFunc, System.IntPtr lParam);
+
+delegate bool EnumChildProc(System.IntPtr hWnd, System.IntPtr lParam);
+
+// Helper method to get window class name
+[System.Runtime.InteropServices.DllImport("user32.dll", CharSet = System.Runtime.InteropServices.CharSet.Auto)]
+static extern int GetClassName(System.IntPtr hWnd, System.Text.StringBuilder lpClassName, int nMaxCount);
+
+// Method to check Outlook status bar for sync indicators
+bool CheckOutlookStatusBar(System.IntPtr mainHandle)
+{
+    bool syncIndicatorFound = false;
+    
+    try
+    {
+        EnumChildWindows(mainHandle, (hWnd, lParam) =>
+        {
+            System.Text.StringBuilder className = new System.Text.StringBuilder(256);
+            GetClassName(hWnd, className, 256);
+            
+            // Look for status bar class names
+            if (className.ToString().Contains("msctls_statusbar") || 
+                className.ToString().Contains("StatusBar"))
+            {
+                System.Text.StringBuilder statusText = new System.Text.StringBuilder(256);
+                GetWindowText(hWnd, statusText, 256);
+                string status = statusText.ToString().ToLower();
+                
+                if (status.Contains("synchronizing") || 
+                    status.Contains("syncing") || 
+                    status.Contains("downloading") ||
+                    status.Contains("sending") ||
+                    status.Contains("updating") ||
+                    status.Contains("connecting"))
+                {
+                    syncIndicatorFound = true;
+                    return false; // Stop enumeration
+                }
+                
+                if (status.Contains("all folders are up to date") ||
+                    status.Contains("up to date") ||
+                    status.Contains("connected"))
+                {
+                    return false; // Stop enumeration, sync complete
+                }
+            }
+            
+            return true; // Continue enumeration
+        }, System.IntPtr.Zero);
+    }
+    catch
+    {
+        // If we can't check the status bar, assume sync might still be happening
+        syncIndicatorFound = true;
+    }
+    
+    return syncIndicatorFound;
+}
