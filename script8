@@ -1,0 +1,23 @@
+Imports Microsoft.Office.Interop.Outlook
+
+' Create Outlook application
+Dim outlookApp As Application = New Application()
+
+' Get MAPI namespace
+Dim session As NameSpace = outlookApp.GetNamespace("MAPI")
+
+' Get SyncObjects collection
+Dim syncObjects As SyncObjects = session.SyncObjects
+
+' Loop through each SyncObject
+For i As Integer = 1 To syncObjects.Count
+    Dim sync As SyncObject = syncObjects.Item(i)
+
+    ' Use a strongly-typed property access
+    Dim running As Boolean = sync.IsRunning
+    If running Then
+        Console.WriteLine("Sync in progress: " & sync.Name)
+    Else
+        Console.WriteLine("Sync completed: " & sync.Name)
+    End If
+Next
