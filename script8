@@ -3,12 +3,14 @@ Dim maxWaitTime As TimeSpan = TimeSpan.FromMinutes(5)
 
 While DateTime.Now - startTime < maxWaitTime
     Try
-        Dim outlookApp = CreateObject("Outlook.Application")
-        Dim session = outlookApp.Session
+        Dim outlookApp As Object = CreateObject("Outlook.Application")
+        Dim session As Object = outlookApp.Session
+        Dim syncObjects As Object = session.SyncObjects
         Dim anySyncRunning As Boolean = False
         
-        For Each syncObj In session.SyncObjects
-            If syncObj.IsRunning Then
+        For i As Integer = 1 To syncObjects.Count
+            Dim syncObj As Object = syncObjects.Item(i)
+            If CBool(syncObj.IsRunning) Then
                 anySyncRunning = True
                 Exit For
             End If
