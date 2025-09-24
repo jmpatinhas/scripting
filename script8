@@ -1,21 +1,10 @@
-' Make sure "Microsoft.Office.Interop.Outlook" is imported in the Imports panel
-
-' Create Outlook application
 Dim outlookApp As Microsoft.Office.Interop.Outlook.Application = New Microsoft.Office.Interop.Outlook.Application()
-
-' Get MAPI namespace
 Dim session As Microsoft.Office.Interop.Outlook.NameSpace = outlookApp.GetNamespace("MAPI")
-
-' Get SyncObjects collection
 Dim syncObjects As Microsoft.Office.Interop.Outlook.SyncObjects = session.SyncObjects
-
-' Loop through each SyncObject using index (avoids late binding)
 For i As Integer = 1 To syncObjects.Count
-    Dim sync As Microsoft.Office.Interop.Outlook.SyncObject = syncObjects.Item(i)
-
-    ' Strongly-typed property access
-    Dim running As Boolean = sync.IsRunning
-    If running Then
+    Dim sync As Microsoft.Office.Interop.Outlook.SyncObject = DirectCast(syncObjects.Item(i), Microsoft.Office.Interop.Outlook.SyncObject)
+    Dim runningValue As Boolean = sync.IsRunning
+    If runningValue Then
         Console.WriteLine("Sync in progress: " & sync.Name)
     Else
         Console.WriteLine("Sync completed: " & sync.Name)
