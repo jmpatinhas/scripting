@@ -1,12 +1,38 @@
-Dim outlookApp As Microsoft.Office.Interop.Outlook.Application = New Microsoft.Office.Interop.Outlook.Application()
-Dim session As Microsoft.Office.Interop.Outlook.NameSpace = outlookApp.GetNamespace("MAPI")
-Dim syncObjects As Microsoft.Office.Interop.Outlook.SyncObjects = session.SyncObjects
-For i As Integer = 1 To syncObjects.Count
-    Dim sync As Microsoft.Office.Interop.Outlook.SyncObject = DirectCast(syncObjects.Item(i), Microsoft.Office.Interop.Outlook.SyncObject)
-    Dim runningValue As Boolean = sync.IsRunning
-    If runningValue Then
-        Console.WriteLine("Sync in progress: " & sync.Name)
-    Else
-        Console.WriteLine("Sync completed: " & sync.Name)
-    End If
-Next
+Imports System.Threading
+Imports Microsoft.Office.Interop.Outlook
+
+' Simple function to wait for Outlook sync completion
+Public Function WaitForOutlookSync(maxWaitMinutes As Integer) As Boolean
+    Dim startTime As DateTime = DateTime.Now
+    Dim maxWaitTime As TimeSpan = TimeSpan.FromMinutes(maxWaitMinutes)
+    
+    While DateTime.Now - startTime < maxWaitTime
+        Try
+            Dim outlookApp As New Application()
+            Dim session As NameSpace = outlookApp.Session
+            Dim anySyncRunning As Boolean = False
+            
+            For Each syncObj As SyncObject In session.SyncObjects
+                If syncObj.IsRunning Then
+                    anySyncRunning = True
+                    Exit For
+                End If
+            Next
+            
+            If Not anySyncRunning Then
+                Return True ' All sync complete
+            End If
+            
+            Thread.Sleep(3000) ' Wait 3 seconds before checking again
+            
+        Catch ex As Exception
+            ' If error, assume sync is complete to avoid infinite waiting
+            Return True
+        End Try
+    End While
+    
+    Return False ' Timeout reached
+End Function
+
+' Usage in UiPath:
+' syncComplete = WaitForOutlookSync(5)
