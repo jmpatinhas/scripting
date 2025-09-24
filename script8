@@ -8,7 +8,8 @@ While DateTime.Now - startTime < maxWaitTime
         Dim anySyncRunning As Boolean = False
         
         For Each syncObj As Microsoft.Office.Interop.Outlook.SyncObject In session.SyncObjects
-            If CBool(syncObj.IsRunning) = True Then
+            Dim isRunning As Object = syncObj.GetType().InvokeMember("IsRunning", System.Reflection.BindingFlags.GetProperty, Nothing, syncObj, Nothing)
+            If CBool(isRunning) = True Then
                 anySyncRunning = True
                 Exit For
             End If
