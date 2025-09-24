@@ -1,49 +1,48 @@
 // UiPath Invoke Code Activity
-// Output variable: output (String)
-
-// Add reference: Microsoft.Office.Interop.Outlook (via UiPath.Mail.Outlook.Activities)
+// Output argument: output (String)
 
 DateTime startTime = DateTime.Now;
 TimeSpan timeout = TimeSpan.FromMinutes(5);
-bool outlookSynced = false;
+bool syncCompleted = false;
 
 try
 {
-    Microsoft.Office.Interop.Outlook.Application outlookApp = new Microsoft.Office.Interop.Outlook.Application();
-    Microsoft.Office.Interop.Outlook.NameSpace outlookNs = outlookApp.GetNamespace("MAPI");
+    var outlookApp = new Microsoft.Office.Interop.Outlook.Application();
+    var outlookNs = outlookApp.GetNamespace("MAPI");
+    var syncObjects = outlookNs.SyncObjects;
 
-    // Inbox folder to monitor
-    Microsoft.Office.Interop.Outlook.MAPIFolder inbox = outlookNs.GetDefaultFolder(
-        Microsoft.Office.Interop.Outlook.OlDefaultFolders.olFolderInbox
-    );
+    // Create a wait handle so we can block until sync ends or timeout
+    System.Threading.AutoResetEvent syncDoneEvent = new System.Threading.AutoResetEvent(false);
 
-    int lastCount = inbox.Items.Count;
-    DateTime stableSince = DateTime.Now;
-
-    while (DateTime.Now - startTime < timeout)
+    // Subscribe to SyncEnd events
+    for (int i = 1; i <= syncObjects.Count; i++)
     {
-        int currentCount = inbox.Items.Count;
+        var syncObj = syncObjects[i];
 
-        if (currentCount == lastCount)
-        {
-            if ((DateTime.Now - stableSince).TotalSeconds > 10) // stable for 10s
+        ((Microsoft.Office.Interop.Outlook.SyncObjectEvents_Event)syncObj).SyncEnd +=
+            new Microsoft.Office.Interop.Outlook.SyncObjectEvents_SyncEndEventHandler(() =>
             {
-                outlookSynced = true;
-                break;
-            }
-        }
-        else
-        {
-            stableSince = DateTime.Now;
-            lastCount = currentCount;
-        }
+                syncCompleted = true;
+                syncDoneEvent.Set();
+            });
 
-        System.Threading.Thread.Sleep(2000);
+        // Optionally trigger sync (if you want to force it instead of waiting for automatic one)
+        // syncObj.Start();
+    }
+
+    // Wait until sync finishes or timeout expires
+    if (syncDoneEvent.WaitOne(timeout))
+    {
+        syncCompleted = true;
+    }
+    else
+    {
+        syncCompleted = false;
     }
 }
 catch
 {
-    outlookSynced = false;
+    syncCompleted = false;
 }
 
-output = outlookSynced ? "True" : "False";
+output = syncCompleted ? "True" : "False";
