@@ -1,5 +1,5 @@
 // UiPath Invoke Code Activity - Simple Outlook Sync Monitor
-// Output variable: syncResult (String)
+// Output variable: bOutput (String)
 
 DateTime startTime = DateTime.Now;
 TimeSpan timeout = TimeSpan.FromMinutes(5);
@@ -11,7 +11,7 @@ while (DateTime.Now - startTime < timeout)
     
     if (outlookProcesses.Length == 0)
     {
-        syncResult = "False";
+        bOutput = "False";
         break;
     }
     
@@ -29,4 +29,4 @@ while (DateTime.Now - startTime < timeout)
     System.Threading.Thread.Sleep(2000);
 }
 
-syncResult = outlookSynced ? "True" : "False";
+bOutput = outlookSynced ? "True" : "False";
