@@ -1,1 +1,3 @@
-String.Join(Environment.NewLine, Enumerable.Concat({String.Join("", DTReport.Columns.Cast(Of DataColumn).Select(Function(c, i) c.ColumnName.PadRight(DTReport.AsEnumerable().Select(Function(r) r(i).ToString().Length).DefaultIfEmpty(0).Max(Function(l) Math.Max(l, c.ColumnName.Length)) + 2)))}, DTReport.AsEnumerable().Select(Function(r) String.Join("", r.ItemArray.Select(Function(f, i) f.ToString().PadRight(DTReport.AsEnumerable().Select(Function(rr) rr(i).ToString().Length).DefaultIfEmpty(0).Max(Function(l) Math.Max(l, DTReport.Columns(i).ColumnName.Length)) + 2)))))))
+New IO.StringWriter : DTReport.WriteXml(New IO.StringWriter(), XmlWriteMode.WriteSchema)
+ReportText = String.Join(vbTab, DTReport.Columns.Cast(Of DataColumn).Select(Function(c) c.ColumnName).ToArray)
+ReportText = ReportText & Environment.NewLine & String.Join(Environment.NewLine, (From r As DataRow In DTReport.Rows Select String.Join(vbTab, r.ItemArray)).ToArray)
