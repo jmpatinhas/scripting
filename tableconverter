@@ -1,3 +1,115 @@
-New IO.StringWriter : DTReport.WriteXml(New IO.StringWriter(), XmlWriteMode.WriteSchema)
-ReportText = String.Join(vbTab, DTReport.Columns.Cast(Of DataColumn).Select(Function(c) c.ColumnName).ToArray)
-ReportText = ReportText & Environment.NewLine & String.Join(Environment.NewLine, (From r As DataRow In DTReport.Rows Select String.Join(vbTab, r.ItemArray)).ToArray)
+using System;
+using System.Data;
+using System.Linq;
+using System.Text;
+using UiPath.CodedWorkflows; // depending on template, this may be implicit
+
+public class ConvertDtToMonoString : CodedWorkflow
+{
+    // The entry point. UiPath will expose the returned string as the Output argument.
+    [Workflow]
+    public string Execute(DataTable dtReport)
+    {
+        // Defensive checks
+        if (dtReport == null)
+            return "(null)";
+
+        if (dtReport.Columns.Count == 0)
+            return "(DataTable has no columns)";
+
+        if (dtReport.Rows.Count == 0)
+        {
+            // Print header only
+            var headerOnly = new StringBuilder();
+            var headers = dtReport.Columns.Cast<DataColumn>().Select(c => c.ColumnName).ToArray();
+            int[] widths = headers.Select(h => Math.Max(3, h.Length)).ToArray();
+
+            // header
+            for (int i = 0; i < headers.Length; i++)
+            {
+                headerOnly.Append("| ").Append(headers[i].PadRight(widths[i])).Append(' ');
+            }
+            headerOnly.Append('|').AppendLine();
+
+            // separator
+            for (int i = 0; i < headers.Length; i++)
+            {
+                headerOnly.Append("+").Append(new string('-', widths[i] + 2));
+            }
+            headerOnly.Append('+').AppendLine();
+
+            headerOnly.Append("(no rows)");
+            return headerOnly.ToString();
+        }
+
+        // 1) compute column widths (based on header and cell text)
+        int colCount = dtReport.Columns.Count;
+        int[] colWidths = new int[colCount];
+
+        for (int c = 0; c < colCount; c++)
+        {
+            string header = dtReport.Columns[c].ColumnName ?? "";
+            int max = header.Length;
+            foreach (DataRow r in dtReport.Rows)
+            {
+                var cell = r[c];
+                string s = cell == null || cell == DBNull.Value ? "" : cell.ToString();
+                // limit extremely long values so table remains readable
+                if (s.Length > 200) s = s.Substring(0, 200) + "…";
+                if (s.Length > max) max = s.Length;
+            }
+            // minimal width for small columns
+            colWidths[c] = Math.Max(3, max);
+        }
+
+        // 2) build lines
+        var sb = new StringBuilder();
+
+        // top border (optional — I include a separator before header for clarity)
+        for (int c = 0; c < colCount; c++)
+            sb.Append("+").Append(new string('-', colWidths[c] + 2));
+        sb.Append('+').AppendLine();
+
+        // header row
+        for (int c = 0; c < colCount; c++)
+        {
+            var header = dtReport.Columns[c].ColumnName ?? "";
+            sb.Append("| ").Append(header.PadRight(colWidths[c])).Append(' ');
+        }
+        sb.Append('|').AppendLine();
+
+        // header / body separator
+        for (int c = 0; c < colCount; c++)
+            sb.Append("+").Append(new string('-', colWidths[c] + 2));
+        sb.Append('+').AppendLine();
+
+        // data rows
+        foreach (DataRow row in dtReport.Rows)
+        {
+            for (int c = 0; c < colCount; c++)
+            {
+                var cell = row[c];
+                string text = cell == null || cell == DBNull.Value ? "" : cell.ToString();
+
+                // Replace newlines inside cells with visible markers to keep table layout stable
+                if (text.Contains("\r") || text.Contains("\n"))
+                    text = text.Replace("\r\n", "\\n").Replace("\n", "\\n").Replace("\r", "\\n");
+
+                // limit long text for readability (optional; adjust or remove if you want full content)
+                if (text.Length > 200)
+                    text = text.Substring(0, 200) + "…";
+
+                sb.Append("| ").Append(text.PadRight(colWidths[c])).Append(' ');
+            }
+            sb.Append('|').AppendLine();
+        }
+
+        // bottom border
+        for (int c = 0; c < colCount; c++)
+            sb.Append("+").Append(new string('-', colWidths[c] + 2));
+        sb.Append('+').AppendLine();
+
+        // Final string ready
+        return sb.ToString();
+    }
+}
