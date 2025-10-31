@@ -2,114 +2,79 @@ using System;
 using System.Data;
 using System.Linq;
 using System.Text;
-using UiPath.CodedWorkflows; // depending on template, this may be implicit
+using System.Net;
+using UiPath.CodedWorkflows; // depending on template, may be implicit
 
-public class ConvertDtToMonoString : CodedWorkflow
+public class ConvertDtToHtmlTable : CodedWorkflow
 {
-    // The entry point. UiPath will expose the returned string as the Output argument.
     [Workflow]
     public string Execute(DataTable dtReport)
     {
         // Defensive checks
         if (dtReport == null)
-            return "(null)";
+            return "<div>(null DataTable)</div>";
 
         if (dtReport.Columns.Count == 0)
-            return "(DataTable has no columns)";
+            return "<div>(DataTable has no columns)</div>";
 
-        if (dtReport.Rows.Count == 0)
+        // Helper: HTML-encode and convert newlines to <br/>
+        string EncodeCell(object cellObj)
         {
-            // Print header only
-            var headerOnly = new StringBuilder();
-            var headers = dtReport.Columns.Cast<DataColumn>().Select(c => c.ColumnName).ToArray();
-            int[] widths = headers.Select(h => Math.Max(3, h.Length)).ToArray();
-
-            // header
-            for (int i = 0; i < headers.Length; i++)
-            {
-                headerOnly.Append("| ").Append(headers[i].PadRight(widths[i])).Append(' ');
-            }
-            headerOnly.Append('|').AppendLine();
-
-            // separator
-            for (int i = 0; i < headers.Length; i++)
-            {
-                headerOnly.Append("+").Append(new string('-', widths[i] + 2));
-            }
-            headerOnly.Append('+').AppendLine();
-
-            headerOnly.Append("(no rows)");
-            return headerOnly.ToString();
+            if (cellObj == null || cellObj == DBNull.Value) return "";
+            string s = cellObj.ToString();
+            // Optionally truncate extremely long values here if desired:
+            // if (s.Length > 1000) s = s.Substring(0, 1000) + "…";
+            // Encode then replace newlines with <br/>
+            return WebUtility.HtmlEncode(s).Replace("\r\n", "<br/>").Replace("\n", "<br/>").Replace("\r", "<br/>");
         }
 
-        // 1) compute column widths (based on header and cell text)
-        int colCount = dtReport.Columns.Count;
-        int[] colWidths = new int[colCount];
-
-        for (int c = 0; c < colCount; c++)
-        {
-            string header = dtReport.Columns[c].ColumnName ?? "";
-            int max = header.Length;
-            foreach (DataRow r in dtReport.Rows)
-            {
-                var cell = r[c];
-                string s = cell == null || cell == DBNull.Value ? "" : cell.ToString();
-                // limit extremely long values so table remains readable
-                if (s.Length > 200) s = s.Substring(0, 200) + "…";
-                if (s.Length > max) max = s.Length;
-            }
-            // minimal width for small columns
-            colWidths[c] = Math.Max(3, max);
-        }
-
-        // 2) build lines
         var sb = new StringBuilder();
 
-        // top border (optional — I include a separator before header for clarity)
-        for (int c = 0; c < colCount; c++)
-            sb.Append("+").Append(new string('-', colWidths[c] + 2));
-        sb.Append('+').AppendLine();
+        // You can return just the <table> if you prefer; here I return a small wrapper.
+        sb.AppendLine("<div style=\"font-family: monospace; font-size: 13px; color: #222;\">");
+        sb.AppendLine("  <p style=\"margin:0 0 8px 0;\">Execution results:</p>");
 
-        // header row
-        for (int c = 0; c < colCount; c++)
+        // Table with inline styles for email compatibility
+        sb.AppendLine("  <table style=\"border-collapse: collapse; width: auto;\">");
+
+        // Header row
+        sb.AppendLine("    <thead>");
+        sb.AppendLine("      <tr>");
+        foreach (DataColumn col in dtReport.Columns)
         {
-            var header = dtReport.Columns[c].ColumnName ?? "";
-            sb.Append("| ").Append(header.PadRight(colWidths[c])).Append(' ');
+            string header = WebUtility.HtmlEncode(col.ColumnName ?? "");
+            sb.AppendLine($"        <th style=\"border:1px solid #999; padding:6px 8px; text-align:left; background:#f2f2f2;\">{header}</th>");
         }
-        sb.Append('|').AppendLine();
+        sb.AppendLine("      </tr>");
+        sb.AppendLine("    </thead>");
 
-        // header / body separator
-        for (int c = 0; c < colCount; c++)
-            sb.Append("+").Append(new string('-', colWidths[c] + 2));
-        sb.Append('+').AppendLine();
-
-        // data rows
-        foreach (DataRow row in dtReport.Rows)
+        // Body rows
+        sb.AppendLine("    <tbody>");
+        if (dtReport.Rows.Count == 0)
         {
-            for (int c = 0; c < colCount; c++)
+            // Single row spanning all columns indicating no rows
+            sb.AppendLine("      <tr>");
+            sb.AppendLine($"        <td colspan=\"{dtReport.Columns.Count}\" style=\"border:1px solid #999; padding:6px 8px;\">(no rows)</td>");
+            sb.AppendLine("      </tr>");
+        }
+        else
+        {
+            foreach (DataRow row in dtReport.Rows)
             {
-                var cell = row[c];
-                string text = cell == null || cell == DBNull.Value ? "" : cell.ToString();
-
-                // Replace newlines inside cells with visible markers to keep table layout stable
-                if (text.Contains("\r") || text.Contains("\n"))
-                    text = text.Replace("\r\n", "\\n").Replace("\n", "\\n").Replace("\r", "\\n");
-
-                // limit long text for readability (optional; adjust or remove if you want full content)
-                if (text.Length > 200)
-                    text = text.Substring(0, 200) + "…";
-
-                sb.Append("| ").Append(text.PadRight(colWidths[c])).Append(' ');
+                sb.AppendLine("      <tr>");
+                foreach (DataColumn col in dtReport.Columns)
+                {
+                    string cellHtml = EncodeCell(row[col]);
+                    sb.AppendLine($"        <td style=\"border:1px solid #999; padding:6px 8px; vertical-align:top;\">{cellHtml}</td>");
+                }
+                sb.AppendLine("      </tr>");
             }
-            sb.Append('|').AppendLine();
         }
+        sb.AppendLine("    </tbody>");
 
-        // bottom border
-        for (int c = 0; c < colCount; c++)
-            sb.Append("+").Append(new string('-', colWidths[c] + 2));
-        sb.Append('+').AppendLine();
+        sb.AppendLine("  </table>");
+        sb.AppendLine("</div>");
 
-        // Final string ready
         return sb.ToString();
     }
 }
