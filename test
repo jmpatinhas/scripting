@@ -1,21 +1,5 @@
-Function GetMarketPrices(tickersString)
-    On Error Resume Next
-    Dim xlApp
-    Set xlApp = CreateObject("Excel.Application")
-    
-    ' Test Excel creation
-    If xlApp Is Nothing Then
-        GetMarketPrices = "ERROR: Excel not created"
-        Exit Function
-    End If
-    
-    ' Test Capital IQ function
-    Dim testPrice
-    testPrice = xlApp.Evaluate("=SPG(""MSFT"",""SP_LASTSALEPRICE"")")
-    If Err.Number <> 0 Then
-        GetMarketPrices = "ERROR_CAPITAL_IQ: " & Err.Description
-        Exit Function
-    End If
-    
-    ' Rest of your function...
-End Function
+Client..                                 Balance          Employed        Verified        Verified   Verified   Invoices   Invoices   Verified
+XXX XXXXXXXX XXXX (XXXXXXX)              14,970,106.33    10,331,074.32   114,922.39      0.77       1.11       9,022      80         0.89    
+YYYY YYYYYYYYYY (YYYYYYYYYY)             1,527,851.67                     972,221.32      63.63      0.00       828        455        54.95   
+YYY YYYYYYY YYYYYYYYYYY XXX (XXXXXX)     33,360,548.12    23,143,987.48   2,878,045.94    8.63       12.44      20,194     1,733      8.58    
+YYYYYY YTY (YYYYYY)                      1,847,702.99     1,153,193.60    398,496.59      21.57      34.56      837        183        21.86   
