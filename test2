@@ -1,0 +1,60 @@
+using System;
+using System.Data;
+using System.Linq;
+using System.Text.RegularExpressions;
+using System.Collections.Generic;
+
+// Initialize DataTable
+resultTable = new DataTable();
+
+// Split text into lines
+var lines = rawText
+    .Split(new[] { "\r\n", "\n" }, StringSplitOptions.RemoveEmptyEntries)
+    .ToList();
+
+// ================================
+// 1. DETECT COLUMN BOUNDARIES
+// ================================
+
+// We assume the first line is the header.
+string header = lines[0];
+
+// A "column gap" is defined as >= 2 spaces.
+// Split on these gaps.
+var headerCols = Regex.Split(header.Trim(), @"\s{2,}")
+                      .Where(x => !string.IsNullOrWhiteSpace(x))
+                      .ToList();
+
+// Create DataTable columns
+foreach (var col in headerCols)
+{
+    resultTable.Columns.Add(col.Trim());
+}
+
+// ================================
+// 2. NORMALIZE ALL ROWS USING SAME COLUMN COUNT
+// ================================
+
+int expectedCols = headerCols.Count;
+
+// Process every data row (skip header)
+for (int i = 1; i < lines.Count; i++)
+{
+    string line = lines[i];
+
+    // Split the line on >=2 spaces = column separators
+    var cols = Regex.Split(line.Trim(), @"\s{2,}")
+                    .Select(x => x.Trim())
+                    .ToList();
+
+    // Fix short rows by padding with empty columns
+    while (cols.Count < expectedCols)
+        cols.Add("");
+
+    // Fix long rows (should not happen, but just in case)
+    if (cols.Count > expectedCols)
+        cols = cols.Take(expectedCols).ToList();
+
+    // Add row to DataTable
+    resultTable.Rows.Add(cols.ToArray());
+}
